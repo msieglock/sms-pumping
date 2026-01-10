@@ -11,6 +11,7 @@ export interface Env {
   SENDGRID_API_KEY: string;
   ANTHROPIC_API_KEY: string;
   JWT_SECRET: string;
+  ENCRYPTION_KEY: string; // For credential encryption
   GOOGLE_CLIENT_ID: string;
   GOOGLE_CLIENT_SECRET: string;
 
@@ -192,3 +193,76 @@ export interface APIResponse<T> {
     details?: Record<string, unknown>;
   };
 }
+
+// SMS Message from provider (stored raw data)
+export interface SMSMessage {
+  id: string;
+  org_id: string;
+  provider: 'twilio' | 'vonage' | 'messagebird' | 'plivo' | 'sinch' | 'aws-sns';
+  provider_message_id: string;
+  direction: 'outbound' | 'inbound';
+  status: string;
+  from_number?: string;
+  to_number: string;
+  body?: string;
+  price?: number;
+  price_unit?: string;
+  raw_data: string;
+  check_id?: string;
+  sent_at?: string;
+  delivered_at?: string;
+  created_at: string;
+}
+
+// Webhook delivery record
+export interface WebhookDelivery {
+  id: string;
+  org_id: string;
+  provider: 'twilio' | 'vonage' | 'messagebird' | 'plivo' | 'sinch' | 'aws-sns';
+  event_type: string;
+  raw_payload: string;
+  signature?: string;
+  processed: boolean;
+  process_error?: string;
+  received_at: string;
+  processed_at?: string;
+}
+
+// Provider credential types
+export interface TwilioCredentials {
+  account_sid: string;
+  auth_token: string;
+}
+
+export interface VonageCredentials {
+  api_key: string;
+  api_secret: string;
+}
+
+export interface MessageBirdCredentials {
+  access_key: string;
+}
+
+export interface PlivoCredentials {
+  auth_id: string;
+  auth_token: string;
+}
+
+export interface SinchCredentials {
+  service_plan_id: string;
+  api_token: string;
+}
+
+export interface AWSSNSCredentials {
+  access_key_id: string;
+  secret_access_key: string;
+  region: string;
+}
+
+export type ProviderCredentials =
+  | TwilioCredentials
+  | VonageCredentials
+  | MessageBirdCredentials
+  | PlivoCredentials
+  | SinchCredentials
+  | AWSSNSCredentials;

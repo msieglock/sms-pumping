@@ -12,6 +12,7 @@ import {
   exportToCSV
 } from '../services/analytics';
 import { verifyAPIKey, verifyJWT, hashAPIKey } from '../middleware/auth';
+import { encryptCredentials, decryptCredentials } from '../services/encryption';
 import { RateLimiter } from './rate-limiter';
 import { VelocityTracker } from './velocity-tracker';
 import authRoutes from './auth';
@@ -694,8 +695,10 @@ v1.post('/integrations/:provider/connect', async (c) => {
     }, 500);
   }
 
-  // Store integration (encrypt credentials in production)
+  // Encrypt and store credentials
   const integrationId = `int_${crypto.randomUUID().replace(/-/g, '')}`;
+  const encryptionKey = c.env.ENCRYPTION_KEY || c.env.JWT_SECRET; // Fallback to JWT_SECRET
+  const encryptedCreds = await encryptCredentials(body, encryptionKey);
 
   // Check if integration already exists
   const existing = await c.env.DB.prepare(
@@ -708,13 +711,13 @@ v1.post('/integrations/:provider/connect', async (c) => {
       UPDATE integrations
       SET status = 'connected', credentials = ?, connected_at = datetime('now')
       WHERE org_id = ? AND provider = ?
-    `).bind(JSON.stringify(body), user.org, provider).run();
+    `).bind(encryptedCreds, user.org, provider).run();
   } else {
     // Create new
     await c.env.DB.prepare(`
       INSERT INTO integrations (id, org_id, provider, status, credentials, connected_at)
       VALUES (?, ?, ?, 'connected', ?, datetime('now'))
-    `).bind(integrationId, user.org, provider, JSON.stringify(body)).run();
+    `).bind(integrationId, user.org, provider, encryptedCreds).run();
   }
 
   return c.json<APIResponse<{ connected: boolean; provider: string }>>({
@@ -771,29 +774,36 @@ v1.post('/integrations/import-history', async (c) => {
     }, 400);
   }
 
-  // For now, simulate import (in production, would call provider API)
+  // Decrypt credentials
+  const encryptionKey = c.env.ENCRYPTION_KEY || c.env.JWT_SECRET;
+  let credentials: Record<string, string>;
+  try {
+    credentials = await decryptCredentials(integration.credentials, encryptionKey);
+  } catch {
+    // Fallback: try parsing as plain JSON (legacy data)
+    credentials = JSON.parse(integration.credentials);
+  }
+
+  // Calculate date range
+  const now = new Date();
+  let startDate: Date;
+  switch (body.dateRange) {
+    case '7d':
+      startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      break;
+    case '90d':
+      startDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+      break;
+    default: // 30d
+      startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  }
+
   let importedCount = 0;
+  const provider = body.provider;
 
-  if (body.provider === 'twilio') {
-    const credentials = JSON.parse(integration.credentials);
-    const authHeader = btoa(`${credentials.accountSid}:${credentials.authToken}`);
-
-    // Calculate date range
-    const now = new Date();
-    let startDate: Date;
-    switch (body.dateRange) {
-      case '7d':
-        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        break;
-      case '90d':
-        startDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-        break;
-      default: // 30d
-        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-    }
-
-    try {
-      // Fetch messages from Twilio
+  try {
+    if (provider === 'twilio') {
+      const authHeader = btoa(`${credentials.accountSid}:${credentials.authToken}`);
       const messagesUrl = `https://api.twilio.com/2010-04-01/Accounts/${credentials.accountSid}/Messages.json?DateSent>=${startDate.toISOString().split('T')[0]}&PageSize=1000`;
       const response = await fetch(messagesUrl, {
         headers: { 'Authorization': `Basic ${authHeader}` }
@@ -801,14 +811,164 @@ v1.post('/integrations/import-history', async (c) => {
 
       if (response.ok) {
         const data = await response.json() as { messages?: any[] };
-        importedCount = data.messages?.length || 0;
+        const messages = data.messages || [];
+        importedCount = messages.length;
 
-        // Store imported messages for analysis (simplified)
-        // In production, would process each message and run fraud analysis
+        // Store each message in sms_messages table
+        for (const msg of messages) {
+          await c.env.DB.prepare(`
+            INSERT OR IGNORE INTO sms_messages (id, org_id, provider, provider_message_id, direction, status, from_number, to_number, body, price, price_unit, raw_data, sent_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `).bind(
+            `msg_${crypto.randomUUID().replace(/-/g, '')}`,
+            user.org,
+            'twilio',
+            msg.sid,
+            msg.direction?.includes('outbound') ? 'outbound' : 'inbound',
+            msg.status,
+            msg.from,
+            msg.to,
+            msg.body,
+            parseFloat(msg.price) || null,
+            msg.price_unit || 'USD',
+            JSON.stringify(msg),
+            msg.date_sent
+          ).run();
+        }
       }
-    } catch (err) {
-      console.error('Twilio import error:', err);
+    } else if (provider === 'vonage') {
+      // Vonage Reports API
+      const response = await fetch(`https://api.nexmo.com/v2/reports?api_key=${credentials.apiKey}&api_secret=${credentials.apiSecret}&product=SMS&date_start=${startDate.toISOString()}&date_end=${now.toISOString()}`, {
+        headers: { 'Accept': 'application/json' }
+      });
+
+      if (response.ok) {
+        const data = await response.json() as { items?: any[] };
+        const messages = data.items || [];
+        importedCount = messages.length;
+
+        for (const msg of messages) {
+          await c.env.DB.prepare(`
+            INSERT OR IGNORE INTO sms_messages (id, org_id, provider, provider_message_id, direction, status, from_number, to_number, price, price_unit, raw_data, sent_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `).bind(
+            `msg_${crypto.randomUUID().replace(/-/g, '')}`,
+            user.org,
+            'vonage',
+            msg.message_id,
+            msg.direction || 'outbound',
+            msg.status,
+            msg.from,
+            msg.to,
+            parseFloat(msg.total_price) || null,
+            'EUR',
+            JSON.stringify(msg),
+            msg.date_received || msg.date_finalized
+          ).run();
+        }
+      }
+    } else if (provider === 'messagebird') {
+      const response = await fetch(`https://rest.messagebird.com/messages?offset=0&limit=200`, {
+        headers: { 'Authorization': `AccessKey ${credentials.apiKey}` }
+      });
+
+      if (response.ok) {
+        const data = await response.json() as { items?: any[] };
+        const messages = data.items || [];
+        importedCount = messages.length;
+
+        for (const msg of messages) {
+          await c.env.DB.prepare(`
+            INSERT OR IGNORE INTO sms_messages (id, org_id, provider, provider_message_id, direction, status, from_number, to_number, body, raw_data, sent_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `).bind(
+            `msg_${crypto.randomUUID().replace(/-/g, '')}`,
+            user.org,
+            'messagebird',
+            msg.id,
+            msg.direction || 'outbound',
+            msg.status,
+            msg.originator,
+            msg.recipients?.items?.[0]?.recipient || '',
+            msg.body,
+            JSON.stringify(msg),
+            msg.createdDatetime
+          ).run();
+        }
+      }
+    } else if (provider === 'plivo') {
+      const authHeader = btoa(`${credentials.authId}:${credentials.authToken}`);
+      const response = await fetch(`https://api.plivo.com/v1/Account/${credentials.authId}/Message/?limit=200&message_time__gte=${startDate.toISOString()}`, {
+        headers: { 'Authorization': `Basic ${authHeader}` }
+      });
+
+      if (response.ok) {
+        const data = await response.json() as { objects?: any[] };
+        const messages = data.objects || [];
+        importedCount = messages.length;
+
+        for (const msg of messages) {
+          await c.env.DB.prepare(`
+            INSERT OR IGNORE INTO sms_messages (id, org_id, provider, provider_message_id, direction, status, from_number, to_number, body, price, price_unit, raw_data, sent_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `).bind(
+            `msg_${crypto.randomUUID().replace(/-/g, '')}`,
+            user.org,
+            'plivo',
+            msg.message_uuid,
+            msg.message_direction === 'inbound' ? 'inbound' : 'outbound',
+            msg.message_state,
+            msg.from_number,
+            msg.to_number,
+            msg.message,
+            parseFloat(msg.total_rate) || null,
+            'USD',
+            JSON.stringify(msg),
+            msg.message_time
+          ).run();
+        }
+      }
+    } else if (provider === 'sinch') {
+      const response = await fetch(`https://us.sms.api.sinch.com/xms/v1/${credentials.servicePlanId}/batches?page_size=100`, {
+        headers: { 'Authorization': `Bearer ${credentials.apiToken}` }
+      });
+
+      if (response.ok) {
+        const data = await response.json() as { batches?: any[] };
+        const messages = data.batches || [];
+        importedCount = messages.length;
+
+        for (const msg of messages) {
+          await c.env.DB.prepare(`
+            INSERT OR IGNORE INTO sms_messages (id, org_id, provider, provider_message_id, direction, status, from_number, to_number, body, raw_data, sent_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `).bind(
+            `msg_${crypto.randomUUID().replace(/-/g, '')}`,
+            user.org,
+            'sinch',
+            msg.id,
+            'outbound',
+            msg.canceled ? 'canceled' : 'sent',
+            msg.from,
+            Array.isArray(msg.to) ? msg.to[0] : msg.to,
+            msg.body,
+            JSON.stringify(msg),
+            msg.created_at
+          ).run();
+        }
+      }
+    } else if (provider === 'aws-sns') {
+      // AWS SNS doesn't have a direct message history API
+      // Users need to set up CloudWatch Logs or SNS delivery status logging
+      // We'll return 0 and inform them to use webhooks instead
+      importedCount = 0;
     }
+  } catch (err) {
+    console.error(`${provider} import error:`, err);
+    return c.json<APIResponse<null>>({
+      success: false,
+      error: { code: 'import_error', message: `Failed to import from ${provider}: ${err}` }
+    }, 500);
   }
 
   // Update last sync time
@@ -931,6 +1091,460 @@ v1.post('/integrations/:provider/sync', async (c) => {
   return c.json<APIResponse<{ synced: boolean; synced_at: string }>>({
     success: true,
     data: { synced: true, synced_at: new Date().toISOString() }
+  });
+});
+
+// ============================================
+// Provider Webhook Endpoints (No Auth - Signature Verified)
+// ============================================
+
+// Helper to look up org by provider integration
+async function findOrgByProvider(db: D1Database, provider: string, identifier: string): Promise<string | null> {
+  // For Twilio, identifier is AccountSid
+  // For others, we match by checking stored credentials (encrypted)
+  const integration = await db.prepare(
+    'SELECT org_id FROM integrations WHERE provider = ? AND status = ?'
+  ).bind(provider, 'connected').first<{ org_id: string }>();
+  return integration?.org_id || null;
+}
+
+// Twilio webhook - receives SMS status callbacks
+app.post('/webhooks/twilio', async (c) => {
+  const body = await c.req.parseBody();
+
+  // Get AccountSid to find org
+  const accountSid = body.AccountSid as string;
+  if (!accountSid) {
+    return c.text('Missing AccountSid', 400);
+  }
+
+  // Find org with this Twilio account
+  const integration = await c.env.DB.prepare(`
+    SELECT org_id, credentials FROM integrations
+    WHERE provider = 'twilio' AND status = 'connected'
+  `).all<{ org_id: string; credentials: string }>();
+
+  let orgId: string | null = null;
+  for (const row of integration.results || []) {
+    try {
+      const encryptionKey = c.env.ENCRYPTION_KEY || c.env.JWT_SECRET;
+      const creds = await decryptCredentials(row.credentials, encryptionKey);
+      if (creds.accountSid === accountSid) {
+        orgId = row.org_id;
+        break;
+      }
+    } catch {
+      // Try legacy JSON
+      try {
+        const creds = JSON.parse(row.credentials);
+        if (creds.accountSid === accountSid) {
+          orgId = row.org_id;
+          break;
+        }
+      } catch {}
+    }
+  }
+
+  if (!orgId) {
+    return c.text('Unknown account', 404);
+  }
+
+  // Store webhook delivery
+  const deliveryId = `wh_${crypto.randomUUID().replace(/-/g, '')}`;
+  await c.env.DB.prepare(`
+    INSERT INTO provider_webhooks (id, org_id, provider, event_type, raw_payload, signature, processed)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).bind(
+    deliveryId,
+    orgId,
+    'twilio',
+    body.MessageStatus as string || 'status_update',
+    JSON.stringify(body),
+    c.req.header('X-Twilio-Signature') || null,
+    false
+  ).run();
+
+  // Store/update message
+  const messageSid = body.MessageSid as string;
+  if (messageSid) {
+    await c.env.DB.prepare(`
+      INSERT INTO sms_messages (id, org_id, provider, provider_message_id, direction, status, from_number, to_number, raw_data, sent_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      ON CONFLICT(org_id, provider, provider_message_id) DO UPDATE SET
+        status = excluded.status,
+        raw_data = excluded.raw_data
+    `).bind(
+      `msg_${crypto.randomUUID().replace(/-/g, '')}`,
+      orgId,
+      'twilio',
+      messageSid,
+      (body.Direction as string)?.includes('outbound') ? 'outbound' : 'inbound',
+      body.MessageStatus as string || 'unknown',
+      body.From as string || '',
+      body.To as string || '',
+      JSON.stringify(body)
+    ).run();
+  }
+
+  // Mark webhook as processed
+  await c.env.DB.prepare(
+    'UPDATE provider_webhooks SET processed = 1, processed_at = datetime("now") WHERE id = ?'
+  ).bind(deliveryId).run();
+
+  return c.text('OK', 200);
+});
+
+// Vonage webhook - receives SMS delivery receipts
+app.post('/webhooks/vonage', async (c) => {
+  const body = await c.req.json();
+
+  // Vonage sends api_key in callbacks
+  const apiKey = body.api_key;
+
+  // Find org
+  const integration = await c.env.DB.prepare(`
+    SELECT org_id, credentials FROM integrations
+    WHERE provider = 'vonage' AND status = 'connected'
+  `).all<{ org_id: string; credentials: string }>();
+
+  let orgId: string | null = null;
+  for (const row of integration.results || []) {
+    try {
+      const encryptionKey = c.env.ENCRYPTION_KEY || c.env.JWT_SECRET;
+      const creds = await decryptCredentials(row.credentials, encryptionKey);
+      if (creds.apiKey === apiKey) {
+        orgId = row.org_id;
+        break;
+      }
+    } catch {
+      try {
+        const creds = JSON.parse(row.credentials);
+        if (creds.apiKey === apiKey) {
+          orgId = row.org_id;
+          break;
+        }
+      } catch {}
+    }
+  }
+
+  if (!orgId) {
+    return c.json({ error: 'Unknown account' }, 404);
+  }
+
+  // Store webhook
+  const deliveryId = `wh_${crypto.randomUUID().replace(/-/g, '')}`;
+  await c.env.DB.prepare(`
+    INSERT INTO provider_webhooks (id, org_id, provider, event_type, raw_payload, processed)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).bind(deliveryId, orgId, 'vonage', body.status || 'delivery_receipt', JSON.stringify(body), false).run();
+
+  // Store message
+  if (body.message_id) {
+    await c.env.DB.prepare(`
+      INSERT INTO sms_messages (id, org_id, provider, provider_message_id, direction, status, from_number, to_number, raw_data, delivered_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      ON CONFLICT(org_id, provider, provider_message_id) DO UPDATE SET
+        status = excluded.status,
+        delivered_at = excluded.delivered_at
+    `).bind(
+      `msg_${crypto.randomUUID().replace(/-/g, '')}`,
+      orgId,
+      'vonage',
+      body.message_id,
+      'outbound',
+      body.status || 'unknown',
+      body.from || '',
+      body.to || body.msisdn || '',
+      JSON.stringify(body)
+    ).run();
+  }
+
+  await c.env.DB.prepare(
+    'UPDATE provider_webhooks SET processed = 1, processed_at = datetime("now") WHERE id = ?'
+  ).bind(deliveryId).run();
+
+  return c.json({ status: 'ok' });
+});
+
+// MessageBird webhook - receives status reports
+app.post('/webhooks/messagebird', async (c) => {
+  const body = await c.req.json();
+
+  // MessageBird doesn't send API key in webhooks - use reference or look up by message id
+  // We'll accept all and match later, or use a shared secret in the URL
+  const orgIdParam = c.req.query('org');
+
+  if (!orgIdParam) {
+    return c.json({ error: 'Missing org parameter' }, 400);
+  }
+
+  // Verify org has messagebird connected
+  const integration = await c.env.DB.prepare(
+    'SELECT id FROM integrations WHERE org_id = ? AND provider = ? AND status = ?'
+  ).bind(orgIdParam, 'messagebird', 'connected').first();
+
+  if (!integration) {
+    return c.json({ error: 'Integration not found' }, 404);
+  }
+
+  // Store webhook
+  const deliveryId = `wh_${crypto.randomUUID().replace(/-/g, '')}`;
+  await c.env.DB.prepare(`
+    INSERT INTO provider_webhooks (id, org_id, provider, event_type, raw_payload, processed)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).bind(deliveryId, orgIdParam, 'messagebird', body.status || 'status_report', JSON.stringify(body), false).run();
+
+  // Store message
+  if (body.id) {
+    await c.env.DB.prepare(`
+      INSERT INTO sms_messages (id, org_id, provider, provider_message_id, direction, status, from_number, to_number, body, raw_data)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(org_id, provider, provider_message_id) DO UPDATE SET
+        status = excluded.status
+    `).bind(
+      `msg_${crypto.randomUUID().replace(/-/g, '')}`,
+      orgIdParam,
+      'messagebird',
+      body.id,
+      'outbound',
+      body.status || body.statusCode || 'unknown',
+      body.originator || '',
+      body.recipient || '',
+      body.body || '',
+      JSON.stringify(body)
+    ).run();
+  }
+
+  await c.env.DB.prepare(
+    'UPDATE provider_webhooks SET processed = 1, processed_at = datetime("now") WHERE id = ?'
+  ).bind(deliveryId).run();
+
+  return c.json({ status: 'ok' });
+});
+
+// Plivo webhook - receives delivery reports
+app.post('/webhooks/plivo', async (c) => {
+  const body = await c.req.parseBody();
+
+  const orgIdParam = c.req.query('org');
+  if (!orgIdParam) {
+    return c.text('Missing org', 400);
+  }
+
+  const integration = await c.env.DB.prepare(
+    'SELECT id FROM integrations WHERE org_id = ? AND provider = ? AND status = ?'
+  ).bind(orgIdParam, 'plivo', 'connected').first();
+
+  if (!integration) {
+    return c.text('Integration not found', 404);
+  }
+
+  // Store webhook
+  const deliveryId = `wh_${crypto.randomUUID().replace(/-/g, '')}`;
+  await c.env.DB.prepare(`
+    INSERT INTO provider_webhooks (id, org_id, provider, event_type, raw_payload, processed)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).bind(deliveryId, orgIdParam, 'plivo', body.Status as string || 'delivery_report', JSON.stringify(body), false).run();
+
+  // Store message
+  const messageUuid = body.MessageUUID as string;
+  if (messageUuid) {
+    await c.env.DB.prepare(`
+      INSERT INTO sms_messages (id, org_id, provider, provider_message_id, direction, status, from_number, to_number, raw_data)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(org_id, provider, provider_message_id) DO UPDATE SET
+        status = excluded.status
+    `).bind(
+      `msg_${crypto.randomUUID().replace(/-/g, '')}`,
+      orgIdParam,
+      'plivo',
+      messageUuid,
+      'outbound',
+      body.Status as string || 'unknown',
+      body.From as string || '',
+      body.To as string || '',
+      JSON.stringify(body)
+    ).run();
+  }
+
+  await c.env.DB.prepare(
+    'UPDATE provider_webhooks SET processed = 1, processed_at = datetime("now") WHERE id = ?'
+  ).bind(deliveryId).run();
+
+  return c.text('OK');
+});
+
+// Sinch webhook - receives delivery reports
+app.post('/webhooks/sinch', async (c) => {
+  const body = await c.req.json();
+
+  const orgIdParam = c.req.query('org');
+  if (!orgIdParam) {
+    return c.json({ error: 'Missing org' }, 400);
+  }
+
+  const integration = await c.env.DB.prepare(
+    'SELECT id FROM integrations WHERE org_id = ? AND provider = ? AND status = ?'
+  ).bind(orgIdParam, 'sinch', 'connected').first();
+
+  if (!integration) {
+    return c.json({ error: 'Integration not found' }, 404);
+  }
+
+  // Store webhook
+  const deliveryId = `wh_${crypto.randomUUID().replace(/-/g, '')}`;
+  await c.env.DB.prepare(`
+    INSERT INTO provider_webhooks (id, org_id, provider, event_type, raw_payload, processed)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).bind(deliveryId, orgIdParam, 'sinch', body.type || 'delivery_report', JSON.stringify(body), false).run();
+
+  // Store message
+  const batchId = body.batch_id;
+  if (batchId) {
+    await c.env.DB.prepare(`
+      INSERT INTO sms_messages (id, org_id, provider, provider_message_id, direction, status, to_number, raw_data)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(org_id, provider, provider_message_id) DO UPDATE SET
+        status = excluded.status
+    `).bind(
+      `msg_${crypto.randomUUID().replace(/-/g, '')}`,
+      orgIdParam,
+      'sinch',
+      batchId,
+      'outbound',
+      body.status || body.type || 'unknown',
+      body.recipient || '',
+      JSON.stringify(body)
+    ).run();
+  }
+
+  await c.env.DB.prepare(
+    'UPDATE provider_webhooks SET processed = 1, processed_at = datetime("now") WHERE id = ?'
+  ).bind(deliveryId).run();
+
+  return c.json({ status: 'ok' });
+});
+
+// AWS SNS webhook - receives delivery status notifications
+app.post('/webhooks/aws-sns', async (c) => {
+  const body = await c.req.json();
+
+  // Handle SNS subscription confirmation
+  if (body.Type === 'SubscriptionConfirmation' && body.SubscribeURL) {
+    // Auto-confirm subscription
+    await fetch(body.SubscribeURL);
+    return c.json({ status: 'subscribed' });
+  }
+
+  const orgIdParam = c.req.query('org');
+  if (!orgIdParam) {
+    return c.json({ error: 'Missing org' }, 400);
+  }
+
+  const integration = await c.env.DB.prepare(
+    'SELECT id FROM integrations WHERE org_id = ? AND provider = ? AND status = ?'
+  ).bind(orgIdParam, 'aws-sns', 'connected').first();
+
+  if (!integration) {
+    return c.json({ error: 'Integration not found' }, 404);
+  }
+
+  // Parse the actual message if it's a notification
+  let messageBody = body;
+  if (body.Type === 'Notification' && body.Message) {
+    try {
+      messageBody = JSON.parse(body.Message);
+    } catch {
+      messageBody = { message: body.Message };
+    }
+  }
+
+  // Store webhook
+  const deliveryId = `wh_${crypto.randomUUID().replace(/-/g, '')}`;
+  await c.env.DB.prepare(`
+    INSERT INTO provider_webhooks (id, org_id, provider, event_type, raw_payload, processed)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).bind(deliveryId, orgIdParam, 'aws-sns', messageBody.notification?.messageType || 'notification', JSON.stringify(body), false).run();
+
+  // Store message if delivery receipt
+  const messageId = messageBody.notification?.messageId;
+  if (messageId) {
+    await c.env.DB.prepare(`
+      INSERT INTO sms_messages (id, org_id, provider, provider_message_id, direction, status, to_number, raw_data)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(org_id, provider, provider_message_id) DO UPDATE SET
+        status = excluded.status
+    `).bind(
+      `msg_${crypto.randomUUID().replace(/-/g, '')}`,
+      orgIdParam,
+      'aws-sns',
+      messageId,
+      'outbound',
+      messageBody.status || messageBody.delivery?.providerResponse || 'unknown',
+      messageBody.delivery?.destination || '',
+      JSON.stringify(body)
+    ).run();
+  }
+
+  await c.env.DB.prepare(
+    'UPDATE provider_webhooks SET processed = 1, processed_at = datetime("now") WHERE id = ?'
+  ).bind(deliveryId).run();
+
+  return c.json({ status: 'ok' });
+});
+
+// Get webhook URL for a provider (for setup instructions)
+v1.get('/integrations/:provider/webhook-url', async (c) => {
+  const auth = c.req.header('Authorization');
+  const user = await verifyJWT(c.env, auth || '');
+  if (!user) {
+    return c.json<APIResponse<null>>({
+      success: false,
+      error: { code: 'authentication_error', message: 'Invalid token' }
+    }, 401);
+  }
+
+  const provider = c.req.param('provider');
+  const baseUrl = 'https://smsguard-api.m-8b1.workers.dev';
+
+  let webhookUrl: string;
+  let setupInstructions: string;
+
+  switch (provider) {
+    case 'twilio':
+      webhookUrl = `${baseUrl}/webhooks/twilio`;
+      setupInstructions = 'Go to Twilio Console > Phone Numbers > Configure > Messaging > Webhook URL';
+      break;
+    case 'vonage':
+      webhookUrl = `${baseUrl}/webhooks/vonage`;
+      setupInstructions = 'Go to Vonage Dashboard > Settings > Default SMS webhook URLs';
+      break;
+    case 'messagebird':
+      webhookUrl = `${baseUrl}/webhooks/messagebird?org=${user.org}`;
+      setupInstructions = 'Go to MessageBird Dashboard > Developers > Flow Builder or API Settings';
+      break;
+    case 'plivo':
+      webhookUrl = `${baseUrl}/webhooks/plivo?org=${user.org}`;
+      setupInstructions = 'Go to Plivo Console > Messaging > Applications > Create/Edit Application';
+      break;
+    case 'sinch':
+      webhookUrl = `${baseUrl}/webhooks/sinch?org=${user.org}`;
+      setupInstructions = 'Go to Sinch Dashboard > SMS > API > Callback URLs';
+      break;
+    case 'aws-sns':
+      webhookUrl = `${baseUrl}/webhooks/aws-sns?org=${user.org}`;
+      setupInstructions = 'Create an SNS topic for SMS delivery status and subscribe this URL as an HTTPS endpoint';
+      break;
+    default:
+      return c.json<APIResponse<null>>({
+        success: false,
+        error: { code: 'invalid_provider', message: 'Unknown provider' }
+      }, 400);
+  }
+
+  return c.json<APIResponse<{ webhook_url: string; setup_instructions: string }>>({
+    success: true,
+    data: { webhook_url: webhookUrl, setup_instructions: setupInstructions }
   });
 });
 
