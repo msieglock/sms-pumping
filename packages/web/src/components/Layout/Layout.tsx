@@ -27,16 +27,21 @@ import {
   Menu as MenuIcon,
   Logout as LogoutIcon,
   Shield as ShieldIcon,
+  IntegrationInstructions as IntegrationsIcon,
+  Description as DocsIcon,
 } from '@mui/icons-material';
 import { useAuthStore } from '../../hooks/useAuthStore';
 import { useRealTimeStats } from '../../hooks/useApi';
 
 const DRAWER_WIDTH = 240;
+const HEADER_HEIGHT = 56;
 
 const navigation = [
   { name: 'Dashboard', path: '/', icon: DashboardIcon },
   { name: 'Review Queue', path: '/review', icon: ReviewIcon },
   { name: 'Analytics', path: '/analytics', icon: AnalyticsIcon },
+  { name: 'Integrations', path: '/integrations', icon: IntegrationsIcon },
+  { name: 'API Docs', path: '/docs', icon: DocsIcon },
   { name: 'Settings', path: '/settings', icon: SettingsIcon },
   { name: 'Billing', path: '/billing', icon: BillingIcon },
 ];
@@ -70,15 +75,28 @@ export default function Layout() {
   };
 
   const drawer = (
-    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <Box sx={{ p: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
-        <ShieldIcon color="primary" />
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: 'background.paper' }}>
+      <Box
+        sx={{
+          height: HEADER_HEIGHT,
+          minHeight: HEADER_HEIGHT,
+          px: 2,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1,
+          cursor: 'pointer',
+          borderBottom: '1px solid',
+          borderColor: 'divider',
+          boxSizing: 'border-box',
+          '&:hover': { opacity: 0.8 },
+        }}
+        onClick={() => navigate('/')}
+      >
+        <ShieldIcon sx={{ color: '#ffa726' }} />
         <Typography variant="h6" fontWeight={700}>
           SMSGuard
         </Typography>
       </Box>
-
-      <Divider />
 
       <List sx={{ flex: 1 }}>
         {navigation.map((item) => (
@@ -90,11 +108,16 @@ export default function Layout() {
                 mx: 1,
                 borderRadius: 1,
                 '&.Mui-selected': {
-                  bgcolor: 'primary.light',
-                  color: 'primary.contrastText',
+                  bgcolor: 'rgba(255, 255, 255, 0.08)',
                   '& .MuiListItemIcon-root': {
-                    color: 'primary.contrastText',
+                    color: '#ffa726',
                   },
+                  '& .MuiListItemText-primary': {
+                    fontWeight: 600,
+                  },
+                },
+                '&:hover': {
+                  bgcolor: 'rgba(255, 255, 255, 0.04)',
                 },
               }}
             >
@@ -143,11 +166,16 @@ export default function Layout() {
         sx={{
           width: { sm: `calc(100% - ${DRAWER_WIDTH}px)` },
           ml: { sm: `${DRAWER_WIDTH}px` },
+          height: HEADER_HEIGHT,
           borderBottom: '1px solid',
           borderColor: 'divider',
         }}
       >
-        <Toolbar>
+        <Toolbar sx={{
+          minHeight: `${HEADER_HEIGHT}px !important`,
+          height: HEADER_HEIGHT,
+          px: 2,
+        }}>
           <IconButton
             edge="start"
             onClick={handleDrawerToggle}
@@ -228,7 +256,7 @@ export default function Layout() {
           flexGrow: 1,
           p: 3,
           width: { sm: `calc(100% - ${DRAWER_WIDTH}px)` },
-          mt: 8,
+          mt: `${HEADER_HEIGHT}px`,
           bgcolor: 'background.default',
           minHeight: '100vh',
         }}

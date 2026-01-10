@@ -20,6 +20,7 @@ export interface Organization {
   name: string;
   plan: 'trial' | 'pro';
   trial_ends_at?: string;
+  onboarding_completed?: boolean;
 }
 
 // SMS Check types
@@ -73,6 +74,9 @@ export interface ReviewItem {
   check_id: string;
   phone_number_masked: string;
   phone_country: string;
+  phone_carrier?: string;
+  phone_type?: string;
+  ip_address?: string;
   fraud_score: number;
   signals: string;
   ai_recommendation?: 'allow' | 'deny';

@@ -1,83 +1,45 @@
-import { createTheme } from '@mui/material/styles';
+import { createTheme, type ThemeOptions } from '@mui/material/styles';
 
-export const theme = createTheme({
-  palette: {
-    mode: 'light',
-    primary: {
-      main: '#6366f1', // Indigo
-      light: '#818cf8',
-      dark: '#4f46e5',
-      contrastText: '#ffffff',
-    },
-    secondary: {
-      main: '#10b981', // Emerald
-      light: '#34d399',
-      dark: '#059669',
-    },
-    error: {
-      main: '#ef4444',
-      light: '#f87171',
-      dark: '#dc2626',
-    },
-    warning: {
-      main: '#f59e0b',
-      light: '#fbbf24',
-      dark: '#d97706',
-    },
-    success: {
-      main: '#10b981',
-      light: '#34d399',
-      dark: '#059669',
-    },
-    background: {
-      default: '#f8fafc',
-      paper: '#ffffff',
-    },
-    text: {
-      primary: '#1e293b',
-      secondary: '#64748b',
-    },
-  },
+// Josefin Sans font family with fallbacks
+const fontFamily = '"Josefin Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif';
+
+// Standardized font sizes
+// Base: 14px (0.875rem)
+// Scale: Minor Third (1.2) - reduced for more compact UI
+const fontSizes = {
+  xs: "0.6875rem",  // 11px - captions, labels
+  sm: "0.75rem",    // 12px - secondary text, table cells
+  base: "0.8125rem", // 13px - body text
+  md: "0.875rem",   // 14px - emphasized body
+  lg: "1rem",       // 16px - h6, subheadings
+  xl: "1.125rem",   // 18px - h5
+  "2xl": "1.25rem", // 20px - h4
+  "3xl": "1.5rem",  // 24px - h3
+  "4xl": "1.75rem", // 28px - h2
+  "5xl": "2rem",    // 32px - h1
+};
+
+// Shared theme options
+const baseTheme: ThemeOptions = {
   typography: {
-    fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-    h1: {
-      fontSize: '2.25rem',
-      fontWeight: 700,
-      lineHeight: 1.2,
-    },
-    h2: {
-      fontSize: '1.875rem',
-      fontWeight: 600,
-      lineHeight: 1.3,
-    },
-    h3: {
-      fontSize: '1.5rem',
-      fontWeight: 600,
-      lineHeight: 1.4,
-    },
-    h4: {
-      fontSize: '1.25rem',
-      fontWeight: 600,
-      lineHeight: 1.4,
-    },
-    h5: {
-      fontSize: '1.125rem',
-      fontWeight: 600,
-      lineHeight: 1.5,
-    },
-    h6: {
-      fontSize: '1rem',
-      fontWeight: 600,
-      lineHeight: 1.5,
-    },
-    body1: {
-      fontSize: '0.875rem',
-      lineHeight: 1.5,
-    },
-    body2: {
-      fontSize: '0.8125rem',
-      lineHeight: 1.5,
-    },
+    fontFamily,
+    fontSize: 13, // Base font size for MUI calculations
+    // Headings
+    h1: { fontSize: fontSizes["5xl"], fontWeight: 600, lineHeight: 1.2 },
+    h2: { fontSize: fontSizes["4xl"], fontWeight: 600, lineHeight: 1.25 },
+    h3: { fontSize: fontSizes["3xl"], fontWeight: 600, lineHeight: 1.3 },
+    h4: { fontSize: fontSizes["2xl"], fontWeight: 500, lineHeight: 1.35 },
+    h5: { fontSize: fontSizes.xl, fontWeight: 500, lineHeight: 1.4 },
+    h6: { fontSize: fontSizes.lg, fontWeight: 500, lineHeight: 1.4 },
+    // Body text
+    body1: { fontSize: fontSizes.base, lineHeight: 1.5 },
+    body2: { fontSize: fontSizes.sm, lineHeight: 1.5 },
+    // UI elements
+    button: { fontSize: fontSizes.sm, fontWeight: 500, textTransform: "none" as const },
+    caption: { fontSize: fontSizes.xs, lineHeight: 1.4 },
+    overline: { fontSize: fontSizes.xs, fontWeight: 500, letterSpacing: "0.08em" },
+    subtitle1: { fontSize: fontSizes.base, fontWeight: 500, lineHeight: 1.4 },
+    subtitle2: { fontSize: fontSizes.sm, fontWeight: 500, lineHeight: 1.4 },
   },
   shape: {
     borderRadius: 8,
@@ -88,21 +50,6 @@ export const theme = createTheme({
         root: {
           textTransform: 'none',
           fontWeight: 500,
-          padding: '8px 16px',
-        },
-        contained: {
-          boxShadow: 'none',
-          '&:hover': {
-            boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-          },
-        },
-      },
-    },
-    MuiCard: {
-      styleOverrides: {
-        root: {
-          boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
-          border: '1px solid #e2e8f0',
         },
       },
     },
@@ -113,15 +60,100 @@ export const theme = createTheme({
         },
       },
     },
-    MuiTableHead: {
+    MuiTableCell: {
+      styleOverrides: {
+        head: {
+          fontWeight: 600,
+        },
+      },
+    },
+    MuiCard: {
       styleOverrides: {
         root: {
-          '& .MuiTableCell-root': {
-            fontWeight: 600,
-            backgroundColor: '#f8fafc',
-          },
+          backgroundImage: 'none',
+        },
+      },
+    },
+    MuiPaper: {
+      styleOverrides: {
+        root: {
+          backgroundImage: 'none',
+        },
+      },
+    },
+    MuiAppBar: {
+      styleOverrides: {
+        root: {
+          backgroundImage: 'none',
+        },
+      },
+    },
+    MuiDrawer: {
+      styleOverrides: {
+        paper: {
+          backgroundImage: 'none',
         },
       },
     },
   },
+};
+
+// Dark theme - matching gray palette from outage-detection-system
+export const theme = createTheme({
+  ...baseTheme,
+  palette: {
+    mode: 'dark',
+    primary: {
+      main: '#e0e0e0',
+      light: '#f5f5f5',
+      dark: '#bdbdbd',
+    },
+    secondary: {
+      main: '#9e9e9e',
+      light: '#bdbdbd',
+      dark: '#757575',
+    },
+    error: {
+      main: '#f44336',
+      light: '#e57373',
+      dark: '#d32f2f',
+    },
+    warning: {
+      main: '#ffa726',
+      light: '#ffb74d',
+      dark: '#f57c00',
+    },
+    success: {
+      main: '#66bb6a',
+      light: '#81c784',
+      dark: '#388e3c',
+    },
+    info: {
+      main: '#9e9e9e',
+      light: '#bdbdbd',
+      dark: '#757575',
+    },
+    background: {
+      default: '#121212',
+      paper: '#1e1e1e',
+    },
+    divider: 'rgba(255, 255, 255, 0.12)',
+  },
 });
+
+// Surface colors for consistent styling
+export const surfaceColors = {
+  background: '#121212',
+  paper: '#1e1e1e',
+  elevated: '#2d2d2d',
+  subtle: '#1e1e1e',
+  border: 'rgba(255, 255, 255, 0.12)',
+};
+
+// Semantic status colors (consistent across the app)
+export const statusColors = {
+  success: '#4caf50',  // Green - allowed, healthy
+  warning: '#ff9800',  // Orange - review, medium risk
+  error: '#f44336',    // Red - blocked, high risk
+  neutral: '#9e9e9e',  // Gray - unknown, inactive
+};

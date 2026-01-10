@@ -67,11 +67,18 @@ export default function Analytics() {
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4" fontWeight={700}>
+      <Box sx={{
+        display: 'flex',
+        flexDirection: { xs: 'column', sm: 'row' },
+        justifyContent: 'space-between',
+        alignItems: { xs: 'flex-start', sm: 'center' },
+        gap: 2,
+        mb: 3
+      }}>
+        <Typography variant="h4" fontWeight={700} sx={{ fontSize: { xs: '1.5rem', sm: '2rem' } }}>
           Analytics
         </Typography>
-        <Box sx={{ display: 'flex', gap: 2 }}>
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
           <ToggleButtonGroup
             value={timeRange}
             exclusive
@@ -87,8 +94,9 @@ export default function Analytics() {
             variant="outlined"
             startIcon={<DownloadIcon />}
             onClick={handleExport}
+            size="small"
           >
-            Export CSV
+            Export
           </Button>
         </Box>
       </Box>
@@ -151,11 +159,11 @@ export default function Analytics() {
         <Grid item xs={12}>
           <Card>
             <CardContent>
-              <Typography variant="h6" gutterBottom>
+              <Typography variant="h6" gutterBottom sx={{ fontSize: { xs: '1rem', sm: '1.25rem' } }}>
                 Country Breakdown
               </Typography>
-              <TableContainer>
-                <Table>
+              <TableContainer sx={{ overflowX: 'auto' }}>
+                <Table sx={{ minWidth: 500 }}>
                   <TableHead>
                     <TableRow>
                       <TableCell>Country</TableCell>

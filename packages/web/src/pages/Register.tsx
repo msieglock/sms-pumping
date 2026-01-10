@@ -22,6 +22,8 @@ import {
 } from '@mui/icons-material';
 import { useRegister } from '../hooks/useApi';
 
+const API_BASE = import.meta.env.VITE_API_URL || '/v1';
+
 export default function Register() {
   const [formData, setFormData] = useState({
     name: '',
@@ -83,7 +85,7 @@ export default function Register() {
               fullWidth
               variant="outlined"
               startIcon={<GoogleIcon />}
-              disabled
+              onClick={() => { window.location.href = `${API_BASE.replace('/v1', '')}/auth/google`; }}
             >
               Google
             </Button>
