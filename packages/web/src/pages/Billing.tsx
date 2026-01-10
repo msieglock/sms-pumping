@@ -34,7 +34,7 @@ const formatMoney = (amount: number) => {
 
 export default function Billing() {
   const [selectedMonth, setSelectedMonth] = useState(format(new Date(), 'yyyy-MM'));
-  const { data: billingSummary, isLoading } = useBillingSummary(selectedMonth);
+  const { data: billingSummary } = useBillingSummary(selectedMonth);
   const { organization } = useAuthStore();
 
   const months = Array.from({ length: 6 }, (_, i) => {
@@ -247,7 +247,7 @@ export default function Billing() {
                       <TableCell align="right" sx={{ color: 'success.main', fontWeight: 600 }}>
                         {formatMoney(billingSummary?.fraud_savings || 0)}
                       </TableCell>
-                      <TableCell align="right" fontWeight={600}>
+                      <TableCell align="right" sx={{ fontWeight: 600 }}>
                         {formatMoney(billingSummary?.total_invoice || 0)}
                       </TableCell>
                       <TableCell align="right">

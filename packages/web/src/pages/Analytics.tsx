@@ -21,8 +21,6 @@ import {
   Download as DownloadIcon,
 } from '@mui/icons-material';
 import {
-  BarChart,
-  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -35,7 +33,6 @@ import {
   Line,
 } from 'recharts';
 import { useAnalyticsSummary, useGeoBreakdown } from '../hooks/useApi';
-import { useAuthStore } from '../hooks/useAuthStore';
 import type { TimeRange } from '../types';
 
 const COLORS = ['#10b981', '#ef4444', '#f59e0b'];
@@ -44,7 +41,6 @@ export default function Analytics() {
   const [timeRange, setTimeRange] = useState<TimeRange>('7d');
   const { data: summary, isLoading } = useAnalyticsSummary(timeRange);
   const { data: geoData } = useGeoBreakdown(timeRange === '30d' ? 30 : timeRange === '7d' ? 7 : 1);
-  const { token } = useAuthStore();
 
   const handleExport = () => {
     window.open(`/api/v1/export/csv?range=${timeRange}`, '_blank');

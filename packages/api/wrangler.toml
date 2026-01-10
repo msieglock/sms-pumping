@@ -9,11 +9,11 @@ LOG_LEVEL = "info"
 [[d1_databases]]
 binding = "DB"
 database_name = "smsguard-db"
-database_id = "placeholder-will-be-set-on-deploy"
+database_id = "a06c5b05-0251-44ce-895b-1b7aa7b0d982"
 
 [[kv_namespaces]]
 binding = "CACHE"
-id = "placeholder-will-be-set-on-deploy"
+id = "f05a953ffc2443c580bcae6e86456a7d"
 
 [[queues.producers]]
 queue = "smsguard-events"
