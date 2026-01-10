@@ -21,6 +21,8 @@ import {
   CheckCircle as ConnectedIcon,
   Upload as ImportIcon,
   Sync as SyncIcon,
+  ContentCopy as CopyIcon,
+  Webhook as WebhookIcon,
 } from '@mui/icons-material';
 import { useAuthStore } from '../hooks/useAuthStore';
 
@@ -119,6 +121,7 @@ export default function Integrations() {
   const [credentials, setCredentials] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [webhookUrls, setWebhookUrls] = useState<Record<string, { url: string; instructions: string }>>({});
   const { token } = useAuthStore();
 
   // Fetch connected integrations on mount
@@ -134,17 +137,54 @@ export default function Integrations() {
       const data = await response.json();
       if (data.success && data.data) {
         // Update integration status based on API response
+        const connectedProviders: string[] = [];
         setIntegrations(prev => prev.map(integration => {
           const connected = data.data.find((i: any) => i.provider === integration.id);
+          if (connected?.status === 'connected') {
+            connectedProviders.push(integration.id);
+          }
           return {
             ...integration,
             connected: connected?.status === 'connected',
             lastSync: connected?.last_sync_at,
           };
         }));
+        // Fetch webhook URLs for connected providers
+        for (const providerId of connectedProviders) {
+          fetchWebhookUrl(providerId);
+        }
       }
     } catch (err) {
       console.error('Failed to fetch integrations:', err);
+    }
+  };
+
+  const fetchWebhookUrl = async (providerId: string) => {
+    try {
+      const response = await fetch(`${API_BASE}/integrations/${providerId}/webhook-url`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      const data = await response.json();
+      if (data.success && data.data) {
+        setWebhookUrls(prev => ({
+          ...prev,
+          [providerId]: {
+            url: data.data.webhook_url,
+            instructions: data.data.setup_instructions,
+          },
+        }));
+      }
+    } catch (err) {
+      console.error(`Failed to fetch webhook URL for ${providerId}:`, err);
+    }
+  };
+
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setMessage({ type: 'success', text: 'Webhook URL copied to clipboard' });
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Failed to copy to clipboard' });
     }
   };
 
@@ -165,9 +205,12 @@ export default function Integrations() {
       const data = await response.json();
       if (data.success) {
         setMessage({ type: 'success', text: `Successfully connected to ${connectDialog.integration.name}` });
+        const providerId = connectDialog.integration.id;
         setConnectDialog({ open: false, integration: null });
         setCredentials({});
         fetchIntegrations();
+        // Fetch webhook URL for the newly connected provider
+        fetchWebhookUrl(providerId);
       } else {
         setMessage({ type: 'error', text: data.error?.message || 'Failed to connect' });
       }
@@ -339,6 +382,40 @@ export default function Integrations() {
 
                 {integration.connected ? (
                   <Box>
+                    {webhookUrls[integration.id] && (
+                      <Box sx={{ mb: 2, p: 1.5, bgcolor: 'background.default', borderRadius: 1 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
+                          <WebhookIcon sx={{ fontSize: 14, color: 'text.secondary' }} />
+                          <Typography variant="caption" fontWeight={600} color="text.secondary">
+                            Webhook URL
+                          </Typography>
+                        </Box>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Typography
+                            variant="caption"
+                            sx={{
+                              flex: 1,
+                              fontFamily: 'monospace',
+                              fontSize: '0.7rem',
+                              wordBreak: 'break-all',
+                              color: 'text.primary',
+                            }}
+                          >
+                            {webhookUrls[integration.id].url}
+                          </Typography>
+                          <Button
+                            size="small"
+                            sx={{ minWidth: 'auto', p: 0.5 }}
+                            onClick={() => copyToClipboard(webhookUrls[integration.id].url)}
+                          >
+                            <CopyIcon sx={{ fontSize: 16 }} />
+                          </Button>
+                        </Box>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, fontSize: '0.65rem' }}>
+                          {webhookUrls[integration.id].instructions}
+                        </Typography>
+                      </Box>
+                    )}
                     <Typography variant="caption" color="text.secondary" display="block" gutterBottom>
                       Last synced: {integration.lastSync ? new Date(integration.lastSync).toLocaleString() : 'Never'}
                     </Typography>
