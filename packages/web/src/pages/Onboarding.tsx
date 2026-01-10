@@ -920,7 +920,21 @@ if (decision === 'allow') {
               fullWidth
               variant="contained"
               size="large"
-              onClick={() => navigate('/')}
+              onClick={async () => {
+                // Mark onboarding as complete
+                try {
+                  await fetch(`${API_BASE.replace('/v1', '')}/auth/onboarding/complete`, {
+                    method: 'POST',
+                    headers: {
+                      'Authorization': `Bearer ${token}`,
+                    },
+                  });
+                  updateOrganization({ onboarding_completed: true });
+                } catch (err) {
+                  console.error('Failed to mark onboarding complete:', err);
+                }
+                navigate('/');
+              }}
             >
               Go to Dashboard
             </Button>

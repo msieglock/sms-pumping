@@ -189,7 +189,7 @@ app.get('/me', async (c) => {
     const { payload } = await jwtVerify(auth.slice(7), secret);
 
     const user = await c.env.DB.prepare(`
-      SELECT u.id, u.email, u.role, o.id as org_id, o.name as org_name, o.plan, o.trial_ends_at
+      SELECT u.id, u.email, u.role, o.id as org_id, o.name as org_name, o.plan, o.trial_ends_at, o.onboarding_completed
       FROM users u
       JOIN organizations o ON u.org_id = o.id
       WHERE u.id = ?
@@ -205,6 +205,37 @@ app.get('/me', async (c) => {
     return c.json({
       success: true,
       data: user
+    });
+  } catch {
+    return c.json({
+      success: false,
+      error: { code: 'invalid_token', message: 'Invalid or expired token' }
+    }, 401);
+  }
+});
+
+// Mark onboarding as complete
+app.post('/onboarding/complete', async (c) => {
+  const auth = c.req.header('Authorization');
+  if (!auth || !auth.startsWith('Bearer ')) {
+    return c.json({
+      success: false,
+      error: { code: 'authentication_error', message: 'Missing token' }
+    }, 401);
+  }
+
+  const secret = new TextEncoder().encode(c.env.JWT_SECRET);
+  try {
+    const { jwtVerify } = await import('jose');
+    const { payload } = await jwtVerify(auth.slice(7), secret);
+
+    await c.env.DB.prepare(`
+      UPDATE organizations SET onboarding_completed = 1 WHERE id = ?
+    `).bind(payload.org).run();
+
+    return c.json({
+      success: true,
+      data: { onboarding_completed: true }
     });
   } catch {
     return c.json({

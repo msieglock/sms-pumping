@@ -39,10 +39,16 @@ export default function AuthCallback() {
                   id: data.data.org_id,
                   name: data.data.org_name,
                   plan: data.data.plan,
+                  onboarding_completed: !!data.data.onboarding_completed,
                 },
                 token
               );
-              navigate('/');
+              // Redirect to onboarding if not completed, otherwise go to dashboard
+              if (!data.data.onboarding_completed) {
+                navigate('/onboarding');
+              } else {
+                navigate('/');
+              }
             } else {
               navigate('/login?error=auth_failed');
             }
