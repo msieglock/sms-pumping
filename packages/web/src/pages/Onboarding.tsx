@@ -40,6 +40,7 @@ import {
   Visibility as VisibilityIcon,
   VisibilityOff as VisibilityOffIcon,
   TrendingDown as TrendingDownIcon,
+  OpenInNew as OpenInNewIcon,
 } from '@mui/icons-material';
 import { useAuthStore } from '../hooks/useAuthStore';
 
@@ -63,6 +64,13 @@ const PROVIDERS = [
       { name: 'accountSid', label: 'Account SID', placeholder: 'ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' },
       { name: 'authToken', label: 'Auth Token', type: 'password', placeholder: 'Your Auth Token' },
     ],
+    consoleUrl: 'https://console.twilio.com',
+    instructions: [
+      'Log in to your Twilio Console',
+      'Your Account SID and Auth Token are displayed on the main dashboard',
+      'Click the "eye" icon next to Auth Token to reveal it',
+      'Copy both values and paste them below',
+    ],
   },
   {
     id: 'vonage',
@@ -72,6 +80,13 @@ const PROVIDERS = [
       { name: 'apiKey', label: 'API Key', placeholder: 'Your API Key' },
       { name: 'apiSecret', label: 'API Secret', type: 'password', placeholder: 'Your API Secret' },
     ],
+    consoleUrl: 'https://dashboard.nexmo.com/settings',
+    instructions: [
+      'Log in to your Vonage Dashboard',
+      'Go to Settings in the left sidebar',
+      'Your API Key and API Secret are shown at the top',
+      'Copy both values and paste them below',
+    ],
   },
   {
     id: 'messagebird',
@@ -79,6 +94,13 @@ const PROVIDERS = [
     description: 'Omnichannel communication platform',
     fields: [
       { name: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Your MessageBird API Key' },
+    ],
+    consoleUrl: 'https://dashboard.messagebird.com/en/developers/access',
+    instructions: [
+      'Log in to your MessageBird Dashboard',
+      'Navigate to Developers > API access',
+      'Click "Add access key" if you don\'t have one',
+      'Choose "Live" key and copy the API key',
     ],
   },
   {
@@ -89,6 +111,13 @@ const PROVIDERS = [
       { name: 'authId', label: 'Auth ID', placeholder: 'Your Auth ID' },
       { name: 'authToken', label: 'Auth Token', type: 'password', placeholder: 'Your Auth Token' },
     ],
+    consoleUrl: 'https://console.plivo.com/dashboard/',
+    instructions: [
+      'Log in to your Plivo Console',
+      'Go to the main Dashboard',
+      'Your Auth ID and Auth Token are displayed at the top',
+      'Click "Show" to reveal the Auth Token, then copy both values',
+    ],
   },
   {
     id: 'sinch',
@@ -97,6 +126,13 @@ const PROVIDERS = [
     fields: [
       { name: 'servicePlanId', label: 'Service Plan ID', placeholder: 'Your Service Plan ID' },
       { name: 'apiToken', label: 'API Token', type: 'password', placeholder: 'Your API Token' },
+    ],
+    consoleUrl: 'https://dashboard.sinch.com/sms/api/rest',
+    instructions: [
+      'Log in to your Sinch Dashboard',
+      'Navigate to SMS > APIs in the left menu',
+      'Select your Service Plan or create a new one',
+      'Copy the Service Plan ID and API Token from the REST configuration',
     ],
   },
   {
@@ -107,6 +143,14 @@ const PROVIDERS = [
       { name: 'accessKeyId', label: 'Access Key ID', placeholder: 'AKIAIOSFODNN7EXAMPLE' },
       { name: 'secretAccessKey', label: 'Secret Access Key', type: 'password', placeholder: 'Your Secret' },
       { name: 'region', label: 'Region', placeholder: 'us-east-1' },
+    ],
+    consoleUrl: 'https://console.aws.amazon.com/iam/home#/security_credentials',
+    instructions: [
+      'Log in to your AWS Console',
+      'Go to IAM > Users and select your user (or create one)',
+      'Click "Security credentials" tab, then "Create access key"',
+      'Copy the Access Key ID and Secret Access Key',
+      'Enter your AWS region (e.g., us-east-1, eu-west-1)',
     ],
   },
 ];
@@ -566,37 +610,75 @@ export default function Onboarding() {
               ))}
             </Grid>
 
-            {selectedProvider && (
-              <Box sx={{ mt: 3 }}>
-                <Divider sx={{ mb: 3 }} />
-                <Typography variant="subtitle2" gutterBottom>
-                  {PROVIDERS.find(p => p.id === selectedProvider)?.name} Credentials
-                </Typography>
-                {PROVIDERS.find(p => p.id === selectedProvider)?.fields.map(field => (
-                  <TextField
-                    key={field.name}
-                    fullWidth
-                    label={field.label}
-                    type={field.type === 'password' && !showPasswords[field.name] ? 'password' : 'text'}
-                    value={credentials[field.name] || ''}
-                    onChange={(e) => setCredentials({ ...credentials, [field.name]: e.target.value })}
-                    placeholder={field.placeholder}
-                    sx={{ mb: 2 }}
-                    InputProps={field.type === 'password' ? {
-                      endAdornment: (
-                        <IconButton
-                          onClick={() => setShowPasswords({ ...showPasswords, [field.name]: !showPasswords[field.name] })}
-                          edge="end"
-                          size="small"
+            {selectedProvider && (() => {
+              const provider = PROVIDERS.find(p => p.id === selectedProvider);
+              if (!provider) return null;
+              return (
+                <Box sx={{ mt: 3 }}>
+                  <Divider sx={{ mb: 3 }} />
+
+                  {/* Instructions Section */}
+                  <Box sx={{ mb: 3, p: 2, bgcolor: 'background.default', borderRadius: 1 }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                      <Typography variant="subtitle2" fontWeight={600}>
+                        How to get your {provider.name} credentials
+                      </Typography>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        endIcon={<OpenInNewIcon sx={{ fontSize: 16 }} />}
+                        href={provider.consoleUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        Open {provider.name} Console
+                      </Button>
+                    </Box>
+                    <Box component="ol" sx={{ m: 0, pl: 2.5 }}>
+                      {provider.instructions.map((instruction, index) => (
+                        <Typography
+                          component="li"
+                          key={index}
+                          variant="body2"
+                          color="text.secondary"
+                          sx={{ mb: 0.5 }}
                         >
-                          {showPasswords[field.name] ? <VisibilityOffIcon /> : <VisibilityIcon />}
-                        </IconButton>
-                      ),
-                    } : undefined}
-                  />
-                ))}
-              </Box>
-            )}
+                          {instruction}
+                        </Typography>
+                      ))}
+                    </Box>
+                  </Box>
+
+                  {/* Credentials Form */}
+                  <Typography variant="subtitle2" gutterBottom>
+                    Enter your {provider.name} credentials
+                  </Typography>
+                  {provider.fields.map(field => (
+                    <TextField
+                      key={field.name}
+                      fullWidth
+                      label={field.label}
+                      type={field.type === 'password' && !showPasswords[field.name] ? 'password' : 'text'}
+                      value={credentials[field.name] || ''}
+                      onChange={(e) => setCredentials({ ...credentials, [field.name]: e.target.value })}
+                      placeholder={field.placeholder}
+                      sx={{ mb: 2 }}
+                      InputProps={field.type === 'password' ? {
+                        endAdornment: (
+                          <IconButton
+                            onClick={() => setShowPasswords({ ...showPasswords, [field.name]: !showPasswords[field.name] })}
+                            edge="end"
+                            size="small"
+                          >
+                            {showPasswords[field.name] ? <VisibilityOffIcon /> : <VisibilityIcon />}
+                          </IconButton>
+                        ),
+                      } : undefined}
+                    />
+                  ))}
+                </Box>
+              );
+            })()}
 
             <Button
               fullWidth
