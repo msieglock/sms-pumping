@@ -153,7 +153,7 @@ async function sendVerification(phoneNumber, req) {
               <Typography variant="subtitle1" fontWeight={600}>
                 Base URL
               </Typography>
-              <CodeBlock code="https://smsguard-api.m-8b1.workers.dev/v1" />
+              <CodeBlock code="https://api.smsguard.ai/v1" />
 
               <Typography variant="subtitle1" fontWeight={600} sx={{ mt: 3 }}>
                 Authentication
@@ -161,7 +161,7 @@ async function sendVerification(phoneNumber, req) {
               <Typography variant="body2" color="text.secondary">
                 All API requests require an API key passed in the X-API-Key header.
               </Typography>
-              <CodeBlock code={`curl -X POST https://smsguard-api.m-8b1.workers.dev/v1/sms/check \\
+              <CodeBlock code={`curl -X POST https://api.smsguard.ai/v1/sms/check \\
   -H "X-API-Key: sk_live_your_api_key" \\
   -H "Content-Type: application/json" \\
   -d '{"phone_number": "+15551234567", "ip_address": "1.2.3.4"}'`} />
@@ -328,7 +328,7 @@ print(result.decision)`} />
                     <Typography variant="subtitle1" fontWeight={600} gutterBottom>
                       REST API (cURL)
                     </Typography>
-                    <CodeBlock code={`curl -X POST https://smsguard-api.m-8b1.workers.dev/v1/sms/check \\
+                    <CodeBlock code={`curl -X POST https://api.smsguard.ai/v1/sms/check \\
   -H "X-API-Key: sk_live_your_api_key" \\
   -H "Content-Type: application/json" \\
   -d '{

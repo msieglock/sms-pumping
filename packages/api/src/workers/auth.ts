@@ -314,7 +314,7 @@ app.get('/google/callback', async (c) => {
   const error = c.req.query('error');
 
   const frontendUrl = c.env.ENVIRONMENT === 'production'
-    ? 'https://smsguard-web.pages.dev'
+    ? 'https://app.smsguard.ai'
     : 'http://localhost:5173';
 
   if (error) {

@@ -21,7 +21,7 @@ const app = new Hono<{ Bindings: Env }>();
 
 // CORS
 app.use('*', cors({
-  origin: ['http://localhost:3000', 'http://localhost:5173', 'https://app.smsguard.dev', 'https://smsguard-web.pages.dev'],
+  origin: ['http://localhost:3000', 'http://localhost:5173', 'https://app.smsguard.ai', 'https://smsguard-web.pages.dev'],
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowHeaders: ['Content-Type', 'Authorization', 'X-API-Key', 'X-Idempotency-Key'],
   credentials: true,
@@ -1505,7 +1505,7 @@ v1.get('/integrations/:provider/webhook-url', async (c) => {
   }
 
   const provider = c.req.param('provider');
-  const baseUrl = 'https://smsguard-api.m-8b1.workers.dev';
+  const baseUrl = 'https://api.smsguard.ai';
 
   let webhookUrl: string;
   let setupInstructions: string;
