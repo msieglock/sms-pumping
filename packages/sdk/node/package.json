@@ -1,0 +1,26 @@
+{
+  "name": "smsguard",
+  "version": "1.0.0",
+  "description": "SMSGuard SDK for Node.js - SMS Pumping Prevention",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": ["sms", "fraud", "prevention", "security", "twilio", "verification"],
+  "author": "SMSGuard",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/smsguard/smsguard-node.git"
+  },
+  "engines": {
+    "node": ">=16"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.0",
+    "@types/node": "^20.10.0"
+  }
+}
