@@ -12,7 +12,7 @@ import {
 const app = new Hono<{ Bindings: Env }>();
 
 app.use('*', cors({
-  origin: ['http://localhost:3000', 'http://localhost:5173', 'https://app.smsguard.dev', 'https://smsguard-web.pages.dev'],
+  origin: ['http://localhost:3000', 'http://localhost:5173', 'https://app.smsguard.ai', 'https://smsguard-web.pages.dev'],
   credentials: true,
 }));
 

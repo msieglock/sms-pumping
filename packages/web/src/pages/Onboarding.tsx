@@ -153,6 +153,22 @@ const PROVIDERS = [
       'Enter your AWS region (e.g., us-east-1, eu-west-1)',
     ],
   },
+  {
+    id: 'klaviyo',
+    name: 'Klaviyo',
+    description: 'Marketing automation with SMS',
+    fields: [
+      { name: 'apiKey', label: 'Private API Key', type: 'password', placeholder: 'pk_xxxxxxxxxxxxxxxxxxxxxxxx' },
+    ],
+    consoleUrl: 'https://www.klaviyo.com/settings/account/api-keys',
+    instructions: [
+      'Log in to your Klaviyo account',
+      'Go to Settings > Account > API Keys',
+      'Click "Create Private API Key"',
+      'Give it a name and select Full Access for SMS',
+      'Copy the Private API Key (starts with pk_)',
+    ],
+  },
 ];
 
 const INDUSTRIES = [

@@ -582,7 +582,7 @@ v1.post('/integrations/:provider/connect', async (c) => {
   const body = await c.req.json<Record<string, string>>();
 
   // Validate provider
-  const validProviders = ['twilio', 'vonage', 'messagebird', 'plivo', 'sinch', 'aws-sns'];
+  const validProviders = ['twilio', 'vonage', 'messagebird', 'plivo', 'sinch', 'aws-sns', 'klaviyo'];
   if (!validProviders.includes(provider)) {
     return c.json<APIResponse<null>>({
       success: false,
@@ -687,6 +687,26 @@ v1.post('/integrations/:provider/connect', async (c) => {
       }
       // AWS credentials will be validated when used - store for now
       // Full AWS SigV4 signing is complex, we'll validate on first use
+    } else if (provider === 'klaviyo') {
+      if (!body.apiKey) {
+        return c.json<APIResponse<null>>({
+          success: false,
+          error: { code: 'missing_credentials', message: 'Private API Key is required' }
+        }, 400);
+      }
+      // Verify Klaviyo credentials by fetching account info
+      const response = await fetch('https://a.klaviyo.com/api/accounts/', {
+        headers: {
+          'Authorization': `Klaviyo-API-Key ${body.apiKey}`,
+          'revision': '2024-02-15'
+        }
+      });
+      if (!response.ok) {
+        return c.json<APIResponse<null>>({
+          success: false,
+          error: { code: 'invalid_credentials', message: 'Invalid Klaviyo API key' }
+        }, 400);
+      }
     }
   } catch (err) {
     return c.json<APIResponse<null>>({
@@ -1493,6 +1513,57 @@ app.post('/webhooks/aws-sns', async (c) => {
   return c.json({ status: 'ok' });
 });
 
+// Klaviyo webhook - receives SMS events
+app.post('/webhooks/klaviyo', async (c) => {
+  const body = await c.req.json();
+
+  const orgIdParam = c.req.query('org');
+  if (!orgIdParam) {
+    return c.json({ error: 'Missing org' }, 400);
+  }
+
+  const integration = await c.env.DB.prepare(
+    'SELECT id FROM integrations WHERE org_id = ? AND provider = ? AND status = ?'
+  ).bind(orgIdParam, 'klaviyo', 'connected').first();
+
+  if (!integration) {
+    return c.json({ error: 'Integration not found' }, 404);
+  }
+
+  // Store webhook
+  const deliveryId = `wh_${crypto.randomUUID().replace(/-/g, '')}`;
+  await c.env.DB.prepare(`
+    INSERT INTO provider_webhooks (id, org_id, provider, event_type, raw_payload, processed)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).bind(deliveryId, orgIdParam, 'klaviyo', body.type || body.event || 'sms_event', JSON.stringify(body), false).run();
+
+  // Store message if SMS event
+  const messageId = body.data?.id || body.attributes?.message_id;
+  if (messageId) {
+    await c.env.DB.prepare(`
+      INSERT INTO sms_messages (id, org_id, provider, provider_message_id, direction, status, to_number, raw_data, sent_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      ON CONFLICT(org_id, provider, provider_message_id) DO UPDATE SET
+        status = excluded.status
+    `).bind(
+      `msg_${crypto.randomUUID().replace(/-/g, '')}`,
+      orgIdParam,
+      'klaviyo',
+      messageId,
+      'outbound',
+      body.attributes?.status || body.data?.attributes?.status || 'unknown',
+      body.attributes?.phone_number || body.data?.attributes?.phone_number || '',
+      JSON.stringify(body)
+    ).run();
+  }
+
+  await c.env.DB.prepare(
+    'UPDATE provider_webhooks SET processed = 1, processed_at = datetime("now") WHERE id = ?'
+  ).bind(deliveryId).run();
+
+  return c.json({ status: 'ok' });
+});
+
 // Get webhook URL for a provider (for setup instructions)
 v1.get('/integrations/:provider/webhook-url', async (c) => {
   const auth = c.req.header('Authorization');
@@ -1534,6 +1605,10 @@ v1.get('/integrations/:provider/webhook-url', async (c) => {
     case 'aws-sns':
       webhookUrl = `${baseUrl}/webhooks/aws-sns?org=${user.org}`;
       setupInstructions = 'Create an SNS topic for SMS delivery status and subscribe this URL as an HTTPS endpoint';
+      break;
+    case 'klaviyo':
+      webhookUrl = `${baseUrl}/webhooks/klaviyo?org=${user.org}`;
+      setupInstructions = 'Go to Klaviyo Settings > Webhooks > Create Webhook and add this URL for SMS events';
       break;
     default:
       return c.json<APIResponse<null>>({

@@ -98,6 +98,15 @@ const INTEGRATIONS: Integration[] = [
       { name: 'region', label: 'Region', placeholder: 'us-east-1' },
     ],
   },
+  {
+    id: 'klaviyo',
+    name: 'Klaviyo',
+    description: 'Connect Klaviyo to protect marketing SMS from fraud',
+    connected: false,
+    fields: [
+      { name: 'apiKey', label: 'Private API Key', placeholder: 'pk_xxxxxxxxxxxxxxxxxxxxxxxx', type: 'password' },
+    ],
+  },
 ];
 
 const PROVIDER_DOCS: Record<string, string> = {
@@ -107,6 +116,7 @@ const PROVIDER_DOCS: Record<string, string> = {
   plivo: 'https://console.plivo.com/dashboard/',
   sinch: 'https://dashboard.sinch.com/sms/api/rest',
   'aws-sns': 'https://console.aws.amazon.com/iam/home#/security_credentials',
+  klaviyo: 'https://www.klaviyo.com/settings/account/api-keys',
 };
 
 export default function Integrations() {
