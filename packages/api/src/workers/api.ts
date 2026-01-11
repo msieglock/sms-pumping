@@ -982,6 +982,42 @@ v1.post('/integrations/import-history', async (c) => {
       // Users need to set up CloudWatch Logs or SNS delivery status logging
       // We'll return 0 and inform them to use webhooks instead
       importedCount = 0;
+    } else if (provider === 'klaviyo') {
+      // Fetch SMS events from Klaviyo's Events API
+      const response = await fetch(`https://a.klaviyo.com/api/events/?filter=equals(metric.name,"Sent SMS")&page[size]=100`, {
+        headers: {
+          'Authorization': `Klaviyo-API-Key ${credentials.apiKey}`,
+          'revision': '2024-02-15',
+          'Accept': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json() as { data?: any[] };
+        const events = data.data || [];
+        importedCount = events.length;
+
+        for (const event of events) {
+          const attrs = event.attributes || {};
+          const profileId = event.relationships?.profile?.data?.id;
+
+          await c.env.DB.prepare(`
+            INSERT OR IGNORE INTO sms_messages (id, org_id, provider, provider_message_id, direction, status, to_number, body, raw_data, sent_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `).bind(
+            `msg_${crypto.randomUUID().replace(/-/g, '')}`,
+            user.org,
+            'klaviyo',
+            event.id,
+            'outbound',
+            'sent',
+            attrs.event_properties?.$phone_number || profileId || '',
+            attrs.event_properties?.$message || '',
+            JSON.stringify(event),
+            attrs.datetime || attrs.timestamp
+          ).run();
+        }
+      }
     }
   } catch (err) {
     console.error(`${provider} import error:`, err);
